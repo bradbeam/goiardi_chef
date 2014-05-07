@@ -1,0 +1,18 @@
+<% digits = [ "port", "freeze-interval" ] %>
+<% bools = [ "use-auth", "use-ssl", "https-urls", "disable-webui" ] %>
+<% node['goiardi']['conf'].each do |key,value| %>
+<% unless key.eql?('mysql') || key.eql?('use-mysql') %>
+<% if digits.include?(key) || bools.include?(key) %>
+<%= key %> = <%= value %>
+<% else %>
+<%= key %> = "<%= value %>"
+<% end %>
+<% end %>
+<% end %>
+
+<% if node['goiardi']['conf']['use-mysql'] %>
+[mysql]
+<% node['goiardi']['conf']['mysql'].each do |key,value| %>
+  <%= key %> = <%= value %>
+<% end %>
+<% end %>

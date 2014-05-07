@@ -1,0 +1,149 @@
+#!/bin/bash
+#
+# goiardi		Start up the goiardi server daemon
+#
+# chkconfig: 2345 55 25
+# Description: Goiardi is an implementation of the Chef server (http://www.opscode.com) written in Go
+#
+# processname: goiardi
+# config: <%= File.join(node['goiardi']['conf']['conf-root'], node['goiardi']['conf-filename']) %>
+# pidfile: /var/run/goiardi.pid
+
+### BEGIN INIT INFO
+# Provides: goiardi
+<% if node['goiardi']['conf']['use-mysql'] %>
+# Required-Start: $network mysql
+# Required-Stop: mysql $network
+<% elsif node['goiardi']['conf']['use-postgresql'] %>
+# Required-Start: $network postgresql
+# Required-Stop: postgresql $network
+<% else %>
+# Required-Start: $network
+# Required-Stop: $network
+<% end %>
+# Should-Start: $network
+# Should-Stop: $network
+# Default-Start:  3 4 5
+# Default-Stop: 0 1 2 6
+# Short-Description: start and stop goiardi
+# Description: Goiardi is an implementation of the Chef server (http://www.opscode.com) written in Go
+### END INIT INFO
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+prog="goiardi"
+lockfile=/var/lock/subsys/$prog
+
+# Some functions to make the below more readable
+DAEMON=<%= File.join(node['go']['gobin'],"goiardi") %>
+CONF_FILE=<%= File.join(node['goiardi']['conf']['conf-root'],node['goiardi']['conf-filename']) %>
+PID_FILE=/var/run/goiardi.pid
+OPTIONS="-c $CONF_FILE"
+
+runlevel=$(set -- $(runlevel); eval "echo \$$#" )
+
+start()
+{
+	[ -x $DAEMON ] || exit 5
+	[ -f $CONF_FILE ] || exit 6
+
+	echo -n $"Starting $prog: "
+	$DAEMON $OPTIONS &
+	RETVAL=$?
+  [ $RETVAL -eq 0 ] && success || failure
+	[ $RETVAL -eq 0 ] && touch $lockfile
+	echo
+	return $RETVAL
+}
+
+stop()
+{
+	echo -n $"Stopping $prog: "
+	killproc -p $PID_FILE $DAEMON
+	RETVAL=$?
+	# if we are in halt or reboot runlevel kill all running sessions
+	# so the TCP connections are closed cleanly
+	if [ "x$runlevel" = x0 -o "x$runlevel" = x6 ] ; then
+	    trap '' TERM
+	    killall $prog 2>/dev/null
+	    trap TERM
+	fi
+	[ $RETVAL -eq 0 ] && rm -f $lockfile
+	echo
+}
+
+reload()
+{
+	echo -n $"Reloading $prog: "
+	killproc -p $PID_FILE $DAEMON -HUP
+	RETVAL=$?
+	echo
+}
+
+restart() {
+	stop
+	start
+}
+
+force_reload() {
+	restart
+}
+
+rh_status() {
+	status -p $PID_FILE openssh-daemon
+}
+
+rh_status_q() {
+	rh_status >/dev/null 2>&1
+}
+
+case "$1" in
+	start)
+		rh_status_q && exit 0
+		start
+		;;
+	stop)
+		if ! rh_status_q; then
+			rm -f $lockfile
+			exit 0
+		fi
+		stop
+		;;
+	restart)
+		restart
+		;;
+	reload)
+		rh_status_q || exit 7
+		reload
+		;;
+	force-reload)
+		force_reload
+		;;
+	condrestart|try-restart)
+		rh_status_q || exit 0
+		if [ -f $lockfile ] ; then
+			do_restart_sanity_check
+			if [ $RETVAL -eq 0 ] ; then
+				stop
+				# avoid race
+				sleep 3
+				start
+			else
+				RETVAL=6
+			fi
+		fi
+		;;
+	status)
+		rh_status
+		RETVAL=$?
+		if [ $RETVAL -eq 3 -a -f $lockfile ] ; then
+			RETVAL=2
+		fi
+		;;
+	*)
+		echo $"Usage: $0 {start|stop|restart|reload|force-reload|condrestart|try-restart|status}"
+		RETVAL=2
+esac
+exit $RETVAL
